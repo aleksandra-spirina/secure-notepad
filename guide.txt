@@ -1,0 +1,6 @@
+cr <file> - create
+ch <file> - change
+del <file> - delete
+r <file> - read
+
+

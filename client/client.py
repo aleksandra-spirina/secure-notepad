@@ -1,5 +1,7 @@
 import socket
 import os
+from cryptoo.ecdh import make_keypair, scalar_mult
+from cryptoo.aes import AESCipher
 
 BUFFER_SIZE = 4096
 PORT_NUMBER = 9090
@@ -16,6 +18,7 @@ class Client:
 
     def __init__(self, port):
         self.port = port
+        self.private_key, self.public_key = make_keypair()
 
     def process(self):
         host = socket.gethostname()
@@ -25,13 +28,20 @@ class Client:
         client_socket.connect((host, self.port))
         print("[+] Connected.")
 
+        client_socket.send(self.public_key)
+        server_key = client_socket.recv(BUFFER_SIZE).decode()
+        s_key = scalar_mult(server_key, self.private_key)
+
+        session_key = s_key[0]
+        cipher = AESCipher(session_key)
+
         message = input(" -> ")  # take input
 
         while message.lower().strip() != 'exit':
-            client_socket.send(message.encode())
+            client_socket.send(cipher.encrypt(message))
             command, file = message.split()
 
-            received = client_socket.recv(BUFFER_SIZE).decode()
+            received = cipher.decrypt(client_socket.recv(BUFFER_SIZE))
             if received == 'such file not exist':
                 print(received)
                 message = input(" -> ")
@@ -44,20 +54,21 @@ class Client:
             if command == 'r' or command == 'ch':
                 if command == 'r':
                     line_read = client_socket.recv(BUFFER_SIZE)
-                    print(line_read.decode())
+                    print(cipher.decrypt(line_read))
 
                 if command == 'ch':
                     with open(file_name, "w") as f:
                         line_read = client_socket.recv(BUFFER_SIZE)
-                        if line_read.decode() == 'file is empty':
-                            print(line_read.decode())
+                        line_read_decrypted = cipher.decrypt(line_read)
+                        if line_read_decrypted == 'file is empty':
+                            print(line_read_decrypted)
                         else:
-                            f.write(line_read.decode())
+                            f.write(line_read_decrypted)
                     open_file(file_name)
 
                     with open(file_name, "r") as f:
                         line_read = f.read(BUFFER_SIZE)
-                        client_socket.send(line_read.encode())
+                        client_socket.send(cipher.encrypt(line_read))
                     os.remove(file_name)
 
             if command == 'cr':

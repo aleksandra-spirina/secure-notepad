@@ -1,7 +1,7 @@
 import socket
 import os
 from crypto.ecdh import make_keypair, scalar_mult
-from crypto.aes import encrypt, decrypt
+from crypto.serpent import encrypt, decrypt
 BUFFER_SIZE = 4096
 PORT_NUMBER = 9090
 SEPARATOR = "|"

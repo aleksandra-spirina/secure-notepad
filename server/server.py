@@ -3,7 +3,7 @@ import os
 
 from crypto.ecdh import scalar_mult, make_keypair
 
-from crypto.aes import encrypt, decrypt
+from crypto.serpent import encrypt, decrypt
 
 BUFFER_SIZE = 1024
 PORT_NUMBER = 9090

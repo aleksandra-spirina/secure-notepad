@@ -1,8 +1,7 @@
 import socket
 import os
-from cryptoo.ecdh import make_keypair, scalar_mult
-from cryptoo.aes import AESCipher
-
+from crypto.ecdh import make_keypair, scalar_mult
+from crypto.aes import encrypt, decrypt
 BUFFER_SIZE = 4096
 PORT_NUMBER = 9090
 SEPARATOR = "|"
@@ -28,20 +27,28 @@ class Client:
         client_socket.connect((host, self.port))
         print("[+] Connected.")
 
-        client_socket.send(self.public_key)
-        server_key = client_socket.recv(BUFFER_SIZE).decode()
-        s_key = scalar_mult(server_key, self.private_key)
+        print(f'public key = {self.public_key}')
+
+        client_socket.send(self.public_key[0].to_bytes(32, 'big'))
+        server_key_x = int.from_bytes(client_socket.recv(BUFFER_SIZE), 'big')
+        client_socket.send(self.public_key[1].to_bytes(32, 'big'))
+        server_key_y = int.from_bytes(client_socket.recv(BUFFER_SIZE), 'big')
+        server_key = (server_key_x, server_key_y)
+
+        print(f'server key = {server_key}')
+
+        s_key = scalar_mult(self.private_key, server_key)
 
         session_key = s_key[0]
-        cipher = AESCipher(session_key)
 
         message = input(" -> ")  # take input
 
         while message.lower().strip() != 'exit':
-            client_socket.send(cipher.encrypt(message))
+
+            client_socket.send(encrypt(message, session_key))
             command, file = message.split()
 
-            received = cipher.decrypt(client_socket.recv(BUFFER_SIZE))
+            received = decrypt(client_socket.recv(BUFFER_SIZE), session_key)
             if received == 'such file not exist':
                 print(received)
                 message = input(" -> ")
@@ -54,12 +61,12 @@ class Client:
             if command == 'r' or command == 'ch':
                 if command == 'r':
                     line_read = client_socket.recv(BUFFER_SIZE)
-                    print(cipher.decrypt(line_read))
+                    print(decrypt(line_read, session_key))
 
                 if command == 'ch':
                     with open(file_name, "w") as f:
                         line_read = client_socket.recv(BUFFER_SIZE)
-                        line_read_decrypted = cipher.decrypt(line_read)
+                        line_read_decrypted = decrypt(line_read, session_key)
                         if line_read_decrypted == 'file is empty':
                             print(line_read_decrypted)
                         else:
@@ -68,7 +75,7 @@ class Client:
 
                     with open(file_name, "r") as f:
                         line_read = f.read(BUFFER_SIZE)
-                        client_socket.send(cipher.encrypt(line_read))
+                        client_socket.send(encrypt(line_read), session_key)
                     os.remove(file_name)
 
             if command == 'cr':

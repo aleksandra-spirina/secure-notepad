@@ -1,9 +1,9 @@
 import socket
 import os
 
-from cryptoo.ecdh import scalar_mult, make_keypair
+from crypto.ecdh import scalar_mult, make_keypair
 
-from cryptoo.aes import AESCipher
+from crypto.aes import encrypt, decrypt
 
 BUFFER_SIZE = 1024
 PORT_NUMBER = 9090
@@ -27,16 +27,23 @@ class Server:
         connect, address = server_socket.accept()
 
         print(f"[+] {address} is connected.")
+        print(f'public key = {self.public_key}')
 
-        client_key = connect.recv(BUFFER_SIZE).decode()
-        s_key = scalar_mult(client_key, self.private_key)
-        connect.send(self.public_key)
+        client_key_x = int.from_bytes(connect.recv(BUFFER_SIZE), 'big')
+        connect.send(self.public_key[0].to_bytes(32, 'big'))
+
+        client_key_y = int.from_bytes(connect.recv(BUFFER_SIZE), 'big')
+        client_key = (client_key_x, client_key_y)
+        connect.send(self.public_key[1].to_bytes(32, 'big'))
+
+        print(f'client key = {client_key}')
+
+        s_key = scalar_mult(self.private_key, client_key)
 
         session_key = s_key[0]
-        cipher = AESCipher(session_key)
 
         while True:
-            data = cipher.decrypt(connect.recv(BUFFER_SIZE))
+            data = decrypt(connect.recv(BUFFER_SIZE), session_key)
             if not data:
                 break
             print("Request from client: " + str(data))
@@ -48,35 +55,35 @@ class Server:
             if command == 'r' or command == 'ch':
                 if os.path.exists(file_path):
                     file_size = os.path.getsize(file_path)
-                    connect.send(cipher.encrypt(f"{file_path}{SEPARATOR}{file_size}"))
+                    connect.send(encrypt(f"{file_path}{SEPARATOR}{file_size}", session_key))
 
                     with open(file_path, "r") as f:
                         line_read = f.read(BUFFER_SIZE)
                         if not line_read:
-                            connect.send(cipher.encrypt('file is empty'))
+                            connect.send(encrypt('file is empty', session_key))
                         else:
-                            connect.send(cipher.encrypt(line_read))
+                            connect.send(encrypt(line_read, session_key))
 
                     if command == 'ch':
                         with open(file_path, "w") as f:
                             line_read = connect.recv(BUFFER_SIZE)
-                            f.write(cipher.decrypt(line_read))
+                            f.write(decrypt(line_read, session_key))
 
                 else:
-                    connect.send(cipher.encrypt('such file doesn\'t exist'))
+                    connect.send(encrypt('such file doesn\'t exist', session_key))
 
             if command == 'cr':
                 with open(file_path, "w") as f:
                     pass
 
                 file_size = os.path.getsize(file_path)
-                connect.send(cipher.encrypt(f"{file_path}{SEPARATOR}{file_size}"))
+                connect.send(encrypt(f"{file_path}{SEPARATOR}{file_size}", session_key))
 
             if command == 'del':
                 if os.path.exists(file_path):
                     os.remove(file_path)
 
-                connect.send(cipher.encrypt(f"{None}{SEPARATOR}{0}"))
+                connect.send(encrypt(f"{None}{SEPARATOR}{0}", session_key))
 
         connect.close()  # close the connection
 
